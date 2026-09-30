@@ -1,0 +1,1537 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PANEL_MARKER="# managed-by: mini-panel"
+SITES_AVAILABLE="/etc/nginx/sites-available"
+SITES_ENABLED="/etc/nginx/sites-enabled"
+APP_USER="mini-panel"
+APP_ROOT="/var/lib/mini-panel/apps"
+UPLOAD_ROOT="/var/lib/mini-panel/uploads"
+BACKUP_ROOT="/var/lib/mini-panel/backups"
+CRON_ROOT="/var/lib/mini-panel/cron"
+WORKER_ROOT="/var/lib/mini-panel/workers"
+CRON_D_ROOT="/etc/cron.d"
+LOG_ROOT="/var/log/mini-panel"
+ENV_ROOT="/etc/mini-panel/apps"
+
+die() {
+  echo "domainctl: $*" >&2
+  exit 1
+}
+
+valid_domain() {
+  local domain="$1"
+  [[ ${#domain} -le 253 ]] || return 1
+  [[ "$domain" == *.* ]] || return 1
+  [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]]
+}
+
+valid_upstream() {
+  local upstream="$1"
+  [[ "$upstream" =~ ^http://(127\.0\.0\.1|localhost):([1-9][0-9]{0,4})$ ]] || return 1
+  local port="${BASH_REMATCH[2]}"
+  (( port >= 1 && port <= 65535 ))
+}
+
+valid_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  (( port >= 1024 && port <= 65535 ))
+}
+
+valid_firewall_port() {
+  local port="$1"
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  (( port >= 1 && port <= 65535 ))
+}
+
+valid_git_url() {
+  local git_url="$1"
+  case "$git_url" in
+    ""|*[[:space:]]*|*";"*|*"&"*|*"|"*|*"\`"*|*'$'*|*"<"*|*">"*|*"\\"*|*"'"*) return 1 ;;
+  esac
+  case "$git_url" in
+    https://*.*/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+valid_branch() {
+  local branch="$1"
+  [[ "$branch" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || return 1
+  [[ "$branch" != *..* && "$branch" != /* && "$branch" != */ ]]
+}
+
+valid_public_dir() {
+  local public_dir="$1"
+  [[ "$public_dir" =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || return 1
+  [[ "$public_dir" != *..* && "$public_dir" != /* && "$public_dir" != */ ]]
+}
+
+valid_email() {
+  local email="$1"
+  [[ "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || return 1
+  case "$email" in
+    *[[:space:]]*|*";"*|*"|"*|*"\`"*|*'$'*|*"<"*|*">"*|*"\\"*) return 1 ;;
+  esac
+  return 0
+}
+
+valid_command() {
+  local command="$1"
+  [[ ${#command} -gt 0 && ${#command} -le 500 ]] || return 1
+  [[ "$command" != *$'\n'* && "$command" != *$'\r'* ]]
+}
+
+valid_cron_id() {
+  local id="$1"
+  [[ "$id" =~ ^[1-9][0-9]{0,17}$ ]]
+}
+
+valid_worker_name() {
+  local name="$1"
+  [[ "$name" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || return 1
+  [[ "$name" != *"--"* ]]
+}
+
+valid_cron_schedule() {
+  local schedule="$1"
+  [[ "$schedule" =~ ^[0-9*/,-]+[[:space:]]+[0-9*/,-]+[[:space:]]+[0-9*/,-]+[[:space:]]+[0-9*/,-]+[[:space:]]+[0-9*/,-]+$ ]] || return 1
+  [[ ${#schedule} -le 160 ]]
+}
+
+valid_site_type() {
+  local site_type="$1"
+  [[ "$site_type" == "static" || "$site_type" == "php" ]]
+}
+
+valid_service_action() {
+  local action="$1"
+  [[ "$action" == "status" || "$action" == "start" || "$action" == "stop" || "$action" == "restart" ]]
+}
+
+valid_env_mode() {
+  local mode="$1"
+  [[ "$mode" == "service" || "$mode" == "dotenv-source" || "$mode" == "dotenv-public" ]]
+}
+
+valid_release_version() {
+  local version="$1"
+  [[ "$version" == "latest" || "$version" =~ ^v[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9._-]+)?$ ]]
+}
+
+valid_repo_url() {
+  local repo="$1"
+  [[ "$repo" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+}
+
+valid_firewall_protocol() {
+  local protocol="$1"
+  [[ "$protocol" == "tcp" || "$protocol" == "udp" ]]
+}
+
+valid_env_file() {
+  local source_path="$1"
+  [[ "$source_path" == "$UPLOAD_ROOT"/mini-panel-env-* ]] || return 1
+  [[ -f "$source_path" ]] || return 1
+  python3 - "$source_path" <<'PY'
+import json
+import re
+import sys
+
+path = sys.argv[1]
+name_re = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
+with open(path, "rb") as f:
+    data = f.read()
+if b"\x00" in data or b"\r" in data:
+    raise SystemExit(1)
+if len(data) > 262144:
+    raise SystemExit(1)
+payload = json.loads(data.decode("utf-8"))
+if not isinstance(payload, list):
+    raise SystemExit(1)
+for item in payload:
+    if not isinstance(item, dict):
+        raise SystemExit(1)
+    name = item.get("name")
+    value = item.get("value")
+    if not isinstance(name, str) or not name_re.match(name):
+        raise SystemExit(1)
+    if not isinstance(value, str) or "\x00" in value or "\r" in value or len(value) > 65536:
+        raise SystemExit(1)
+PY
+}
+
+write_env_file() {
+  local source_path="$1"
+  local target_path="$2"
+  python3 - "$source_path" "$target_path" <<'PY'
+import json
+import os
+import re
+import sys
+import tempfile
+
+source_path, target_path = sys.argv[1], sys.argv[2]
+name_re = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
+
+def quote(value):
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+with open(source_path, "r", encoding="utf-8") as f:
+    payload = json.load(f)
+
+lines = []
+for item in payload:
+    name = item["name"]
+    value = item["value"]
+    if not name_re.match(name) or "\x00" in value or "\r" in value or len(value) > 65536:
+        raise SystemExit(1)
+    lines.append(f"{name}={quote(value)}\n")
+
+directory = os.path.dirname(target_path)
+os.makedirs(directory, exist_ok=True)
+fd, tmp_path = tempfile.mkstemp(prefix=".env-", dir=directory, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    os.replace(tmp_path, target_path)
+finally:
+    if os.path.exists(tmp_path):
+        os.unlink(tmp_path)
+PY
+}
+
+config_path_for() {
+  local domain="$1"
+  printf '%s/mini-panel-%s.conf' "$SITES_AVAILABLE" "$domain"
+}
+
+enabled_path_for() {
+  local domain="$1"
+  printf '%s/mini-panel-%s.conf' "$SITES_ENABLED" "$domain"
+}
+
+service_name_for() {
+  local domain="$1"
+  printf 'mini-panel-app-%s.service' "$domain"
+}
+
+env_path_for() {
+  local domain="$1"
+  printf '%s/%s.env' "$ENV_ROOT" "$domain"
+}
+
+app_dir_for() {
+  local domain="$1"
+  printf '%s/%s' "$APP_ROOT" "$domain"
+}
+
+cron_file_for() {
+  local id="$1"
+  local domain="$2"
+  printf '%s/mini-panel-%s-%s' "$CRON_D_ROOT" "$id" "$domain"
+}
+
+cron_script_for() {
+  local id="$1"
+  local domain="$2"
+  printf '%s/mini-panel-cron-%s-%s.sh' "$CRON_ROOT" "$id" "$domain"
+}
+
+cron_log_for() {
+  local id="$1"
+  local domain="$2"
+  printf '%s/cron-%s-%s.log' "$LOG_ROOT" "$id" "$domain"
+}
+
+worker_unit_name_for() {
+  local id="$1"
+  local domain="$2"
+  local name="$3"
+  printf 'mini-panel-worker-%s-%s-%s.service' "$id" "$domain" "$name"
+}
+
+worker_script_for() {
+  local id="$1"
+  local domain="$2"
+  local name="$3"
+  printf '%s/mini-panel-worker-%s-%s-%s.sh' "$WORKER_ROOT" "$id" "$domain" "$name"
+}
+
+valid_app_workdir() {
+  local domain="$1"
+  local workdir="$2"
+  [[ "$workdir" == "$APP_ROOT/$domain" || "$workdir" == "$APP_ROOT/$domain/"* ]] || return 1
+  [[ -d "$workdir" ]] || return 1
+  [[ "$workdir" != *".."* && "$workdir" != *$'\n'* && "$workdir" != *$'\r'* ]] || return 1
+}
+
+valid_backup_path() {
+  local path="$1"
+  [[ "$path" == "$BACKUP_ROOT"/mini-panel-* ]] || return 1
+  [[ "$path" != *".."* && "$path" != *$'\n'* && "$path" != *$'\r'* && "$path" != *" "* ]] || return 1
+}
+
+ensure_unit_env_file() {
+  local unit_path="$1"
+  local env_path="$2"
+  python3 - "$unit_path" "$env_path" <<'PY'
+import sys
+
+unit_path, env_path = sys.argv[1], sys.argv[2]
+line = f"EnvironmentFile=-{env_path}\n"
+with open(unit_path, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+if line in lines:
+    raise SystemExit(0)
+for idx, existing in enumerate(lines):
+    if existing.strip() == "[Service]":
+        lines.insert(idx + 1, line)
+        break
+else:
+    raise SystemExit("missing [Service] section")
+with open(unit_path, "w", encoding="utf-8") as f:
+    f.writelines(lines)
+PY
+}
+
+add_domain() {
+  local domain="$1"
+  local upstream="$2"
+  valid_domain "$domain" || die "invalid domain"
+  valid_upstream "$upstream" || die "invalid upstream"
+
+  local config_path enabled_path
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+
+  [[ ! -e "$config_path" ]] || die "config already exists"
+  [[ ! -e "$enabled_path" ]] || die "enabled config already exists"
+
+  umask 022
+  cat >"$config_path" <<EOF
+$PANEL_MARKER
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+
+    location / {
+        proxy_pass $upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+EOF
+  ln -s "$config_path" "$enabled_path" || {
+    rm -f "$config_path"
+    die "could not enable config"
+  }
+  if ! nginx -t; then
+    rm -f "$enabled_path" "$config_path"
+    die "nginx config test failed"
+  fi
+  systemctl reload nginx
+}
+
+add_static_domain() {
+  local domain="$1"
+  local root_dir="$2"
+  valid_domain "$domain" || die "invalid domain"
+  [[ -d "$root_dir" ]] || die "document root does not exist"
+
+  local config_path enabled_path
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+  [[ ! -e "$config_path" ]] || die "config already exists"
+  [[ ! -e "$enabled_path" ]] || die "enabled config already exists"
+
+  cat >"$config_path" <<EOF
+$PANEL_MARKER
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+    root $root_dir;
+    index index.html index.htm;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+}
+EOF
+  ln -s "$config_path" "$enabled_path" || {
+    rm -f "$config_path"
+    die "could not enable config"
+  }
+  if ! nginx -t; then
+    rm -f "$enabled_path" "$config_path"
+    die "nginx config test failed"
+  fi
+  systemctl reload nginx
+}
+
+create_static_site() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+
+  local app_dir public_dir
+  app_dir="$(app_dir_for "$domain")"
+  public_dir="$app_dir/public"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0755 "$public_dir"
+  cat >"$public_dir/index.html" <<EOF
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>$domain</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, sans-serif; background: #f6f7f9; color: #16181d; }
+    main { width: min(720px, calc(100% - 32px)); padding: 32px; background: #fff; border: 1px solid #d9dee7; border-radius: 8px; }
+    h1 { margin: 0 0 12px; font-size: 28px; }
+    p { margin: 0; color: #636b76; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>$domain aktif</h1>
+    <p>Website ini dibuat otomatis oleh Mini Panel. Edit file ini dari menu Files.</p>
+  </main>
+</body>
+</html>
+EOF
+  chown "$APP_USER:$APP_USER" "$public_dir/index.html"
+  chmod 0644 "$public_dir/index.html"
+
+  if ! add_static_domain "$domain" "$public_dir"; then
+    rm -rf "$app_dir"
+    die "could not create nginx config"
+  fi
+}
+
+php_fpm_socket() {
+  local socket
+  socket="$(find /run/php -maxdepth 1 -name 'php*-fpm.sock' 2>/dev/null | sort -V | tail -n 1)"
+  [[ -n "$socket" ]] || die "php-fpm socket not found"
+  printf '%s\n' "$socket"
+}
+
+add_php_domain() {
+  local domain="$1"
+  local root_dir="$2"
+  valid_domain "$domain" || die "invalid domain"
+  [[ -d "$root_dir" ]] || die "document root does not exist"
+
+  local config_path enabled_path socket
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+  socket="$(php_fpm_socket)"
+  [[ ! -e "$config_path" ]] || die "config already exists"
+  [[ ! -e "$enabled_path" ]] || die "enabled config already exists"
+
+  cat >"$config_path" <<EOF
+$PANEL_MARKER
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+    root $root_dir;
+    index index.php index.html index.htm;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:$socket;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
+EOF
+  ln -s "$config_path" "$enabled_path" || {
+    rm -f "$config_path"
+    die "could not enable config"
+  }
+  if ! nginx -t; then
+    rm -f "$enabled_path" "$config_path"
+    die "nginx config test failed"
+  fi
+  systemctl reload nginx
+}
+
+delete_domain() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+
+  local config_path enabled_path
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+
+  [[ -f "$config_path" ]] || die "config does not exist"
+  grep -Fxq "$PANEL_MARKER" "$config_path" || die "refusing to delete unmanaged config"
+
+  nginx -t || die "existing nginx config is invalid"
+  local backup_path
+  backup_path="$(mktemp)"
+  cp "$config_path" "$backup_path"
+
+  rm -f "$enabled_path"
+  rm -f "$config_path"
+  if ! nginx -t; then
+    cp "$backup_path" "$config_path"
+    ln -s "$config_path" "$enabled_path" 2>/dev/null || true
+    rm -f "$backup_path"
+    die "nginx config test failed after delete"
+  fi
+  rm -f "$backup_path"
+  cleanup_go_service "$domain"
+  systemctl reload nginx
+}
+
+cleanup_go_service() {
+  local domain="$1"
+  local service unit_path app_dir
+  service="$(service_name_for "$domain")"
+  unit_path="/etc/systemd/system/$service"
+  app_dir="$(app_dir_for "$domain")"
+
+  if [[ -f "$unit_path" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing to delete unmanaged service"
+    systemctl disable --now "$service" >/dev/null 2>&1 || true
+    rm -f "$unit_path"
+    systemctl daemon-reload
+  fi
+  if [[ -d "$app_dir" ]]; then
+    rm -rf "$app_dir"
+  fi
+  rm -f "$(env_path_for "$domain")"
+  cleanup_cron_jobs_for_domain "$domain"
+  cleanup_worker_jobs_for_domain "$domain"
+}
+
+cleanup_app_service() {
+  cleanup_go_service "$1"
+}
+
+cleanup_cron_jobs_for_domain() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+  local file
+  for file in "$CRON_D_ROOT"/mini-panel-*-"$domain"; do
+    [[ -e "$file" ]] || continue
+    grep -Fxq "$PANEL_MARKER" "$file" || die "refusing unmanaged cron file"
+    rm -f "$file"
+  done
+  for file in "$CRON_ROOT"/mini-panel-cron-*-"$domain".sh; do
+    [[ -e "$file" ]] || continue
+    rm -f "$file"
+  done
+}
+
+cleanup_worker_jobs_for_domain() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+  local unit script unit_name
+  for unit in /etc/systemd/system/mini-panel-worker-*-"$domain"-*.service; do
+    [[ -e "$unit" ]] || continue
+    grep -Fxq "$PANEL_MARKER" "$unit" || die "refusing unmanaged worker service"
+    unit_name="$(basename "$unit")"
+    systemctl disable --now "$unit_name" >/dev/null 2>&1 || true
+    rm -f "$unit"
+  done
+  for script in "$WORKER_ROOT"/mini-panel-worker-*-"$domain"-*.sh; do
+    [[ -e "$script" ]] || continue
+    rm -f "$script"
+  done
+  systemctl daemon-reload
+}
+
+restart_worker_jobs_for_domain() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+  local unit unit_name
+  for unit in /etc/systemd/system/mini-panel-worker-*-"$domain"-*.service; do
+    [[ -e "$unit" ]] || continue
+    grep -Fxq "$PANEL_MARKER" "$unit" || die "refusing unmanaged worker service"
+    unit_name="$(basename "$unit")"
+    systemctl restart "$unit_name" >/dev/null 2>&1 || true
+  done
+}
+
+install_go() {
+  local domain="$1"
+  local source_path="$2"
+  local port="$3"
+  valid_domain "$domain" || die "invalid domain"
+  valid_port "$port" || die "invalid port"
+  [[ "$source_path" == "$UPLOAD_ROOT"/mini-panel-go-* ]] || die "invalid source path"
+  [[ -f "$source_path" ]] || die "source binary does not exist"
+
+  local app_dir service unit_path
+  app_dir="$(app_dir_for "$domain")"
+  service="$(service_name_for "$domain")"
+  unit_path="/etc/systemd/system/$service"
+
+  [[ ! -e "$unit_path" ]] || die "service already exists"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  install -o "$APP_USER" -g "$APP_USER" -m 0755 "$source_path" "$app_dir/app"
+  rm -f "$source_path"
+
+  cat >"$unit_path" <<EOF
+$PANEL_MARKER
+[Unit]
+Description=Mini Panel Go app for $domain
+After=network.target
+
+[Service]
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$app_dir
+EnvironmentFile=-$(env_path_for "$domain")
+Environment=PORT=$port
+ExecStart=$app_dir/app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "$service"
+
+  if ! add_domain "$domain" "http://127.0.0.1:$port"; then
+    cleanup_go_service "$domain"
+    die "could not create nginx config"
+  fi
+}
+
+write_script() {
+  local path="$1"
+  local command="$2"
+  local port="$3"
+  cat >"$path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export PORT=$port
+cd "\$(dirname "\$0")/source"
+$command
+EOF
+  chown "$APP_USER:$APP_USER" "$path"
+  chmod 0750 "$path"
+}
+
+install_node() {
+  local domain="$1"
+  local git_url="$2"
+  local branch="$3"
+  local port="$4"
+  local install_command="$5"
+  local build_command="$6"
+  local start_command="$7"
+
+  valid_domain "$domain" || die "invalid domain"
+  valid_git_url "$git_url" || die "invalid git URL"
+  valid_branch "$branch" || die "invalid branch"
+  valid_port "$port" || die "invalid port"
+  valid_command "$install_command" || die "invalid install command"
+  valid_command "$build_command" || die "invalid build command"
+  valid_command "$start_command" || die "invalid start command"
+  command -v git >/dev/null 2>&1 || die "git is not installed"
+  command -v npm >/dev/null 2>&1 || die "npm is not installed"
+
+  local app_dir service unit_path
+  app_dir="$(app_dir_for "$domain")"
+  service="$(service_name_for "$domain")"
+  unit_path="/etc/systemd/system/$service"
+
+  [[ ! -e "$unit_path" ]] || die "service already exists"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  sudo -u "$APP_USER" git clone --depth 1 --branch "$branch" "$git_url" "$app_dir/source"
+
+  write_script "$app_dir/install.sh" "$install_command" "$port"
+  write_script "$app_dir/build.sh" "$build_command" "$port"
+  write_script "$app_dir/start.sh" "$start_command" "$port"
+
+  sudo -u "$APP_USER" "$app_dir/install.sh"
+  sudo -u "$APP_USER" "$app_dir/build.sh"
+
+  cat >"$unit_path" <<EOF
+$PANEL_MARKER
+[Unit]
+Description=Mini Panel Node app for $domain
+After=network.target
+
+[Service]
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$app_dir/source
+EnvironmentFile=-$(env_path_for "$domain")
+Environment=PORT=$port
+ExecStart=$app_dir/start.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "$service"
+
+  if ! add_domain "$domain" "http://127.0.0.1:$port"; then
+    cleanup_app_service "$domain"
+    die "could not create nginx config"
+  fi
+}
+
+install_node_zip() {
+  local domain="$1"
+  local source_path="$2"
+  local port="$3"
+  local install_command="$4"
+  local build_command="$5"
+  local start_command="$6"
+
+  valid_domain "$domain" || die "invalid domain"
+  valid_port "$port" || die "invalid port"
+  valid_command "$install_command" || die "invalid install command"
+  valid_command "$build_command" || die "invalid build command"
+  valid_command "$start_command" || die "invalid start command"
+  [[ "$source_path" == "$UPLOAD_ROOT"/mini-panel-node-zip-* ]] || die "invalid source path"
+  [[ -f "$source_path" ]] || die "source zip does not exist"
+  command -v npm >/dev/null 2>&1 || die "npm is not installed"
+  command -v python3 >/dev/null 2>&1 || die "python3 is not installed"
+
+  local app_dir service unit_path
+  app_dir="$(app_dir_for "$domain")"
+  service="$(service_name_for "$domain")"
+  unit_path="/etc/systemd/system/$service"
+
+  [[ ! -e "$unit_path" ]] || die "service already exists"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  local deploy_complete=0
+  trap 'if [[ "$deploy_complete" != "1" ]]; then cleanup_app_service "$domain" >/dev/null 2>&1 || true; fi' RETURN
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir/source"
+  safe_extract_zip "$source_path" "$app_dir/source"
+  chown -R "$APP_USER:$APP_USER" "$app_dir"
+  rm -f "$source_path"
+
+  write_script "$app_dir/install.sh" "$install_command" "$port"
+  write_script "$app_dir/build.sh" "$build_command" "$port"
+  write_script "$app_dir/start.sh" "$start_command" "$port"
+
+  sudo -u "$APP_USER" "$app_dir/install.sh"
+  sudo -u "$APP_USER" "$app_dir/build.sh"
+
+  cat >"$unit_path" <<EOF
+$PANEL_MARKER
+[Unit]
+Description=Mini Panel Node app for $domain
+After=network.target
+
+[Service]
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$app_dir/source
+EnvironmentFile=-$(env_path_for "$domain")
+Environment=PORT=$port
+ExecStart=$app_dir/start.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "$service"
+
+  if ! add_domain "$domain" "http://127.0.0.1:$port"; then
+    cleanup_app_service "$domain"
+    die "could not create nginx config"
+  fi
+  deploy_complete=1
+}
+
+install_php_git() {
+  local domain="$1"
+  local git_url="$2"
+  local branch="$3"
+  local public_dir="$4"
+  local install_command="$5"
+
+  valid_domain "$domain" || die "invalid domain"
+  valid_git_url "$git_url" || die "invalid git URL"
+  valid_branch "$branch" || die "invalid branch"
+  valid_public_dir "$public_dir" || die "invalid public directory"
+  valid_command "$install_command" || die "invalid install command"
+  command -v git >/dev/null 2>&1 || die "git is not installed"
+  command -v composer >/dev/null 2>&1 || die "composer is not installed"
+
+  local app_dir root_dir
+  app_dir="$(app_dir_for "$domain")"
+  root_dir="$app_dir/source/$public_dir"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  sudo -u "$APP_USER" git clone --depth 1 --branch "$branch" "$git_url" "$app_dir/source"
+  if [[ -f "$app_dir/source/composer.json" ]]; then
+    write_script "$app_dir/install.sh" "$install_command" "0"
+    sudo -u "$APP_USER" "$app_dir/install.sh"
+  fi
+  [[ -d "$root_dir" ]] || die "document root does not exist: $public_dir"
+  chown -R "$APP_USER:$APP_USER" "$app_dir"
+  add_php_domain "$domain" "$root_dir"
+}
+
+safe_extract_zip() {
+  local zip_path="$1"
+  local dest_dir="$2"
+  python3 - "$zip_path" "$dest_dir" <<'PY'
+import os
+import sys
+import zipfile
+
+zip_path, dest_dir = sys.argv[1], sys.argv[2]
+dest_abs = os.path.abspath(dest_dir)
+with zipfile.ZipFile(zip_path) as zf:
+    for info in zf.infolist():
+        name = info.filename.replace("\\", "/")
+        if name.startswith("/") or name.startswith("../") or "/../" in name or name == "..":
+            raise SystemExit(f"unsafe zip path: {info.filename}")
+        # Reject symlink entries: file type bits live in the upper 16 bits of external_attr.
+        # S_IFLNK = 0o120000. The tar extractor already rejects symlinks; zip must too,
+        # otherwise a crafted archive could plant a symlink inside the app dir and the
+        # panel file manager (which follows symlinks) would read/write outside the root.
+        if (info.external_attr >> 16) & 0o170000 == 0o120000:
+            raise SystemExit(f"unsafe zip symlink: {info.filename}")
+        target = os.path.abspath(os.path.join(dest_abs, name))
+        if not target.startswith(dest_abs + os.sep) and target != dest_abs:
+            raise SystemExit(f"unsafe zip target: {info.filename}")
+    zf.extractall(dest_abs)
+PY
+}
+
+safe_extract_tar() {
+  local tar_path="$1"
+  local dest_dir="$2"
+  python3 - "$tar_path" "$dest_dir" <<'PY'
+import os
+import sys
+import tarfile
+
+tar_path, dest_dir = sys.argv[1], sys.argv[2]
+dest_abs = os.path.abspath(dest_dir)
+with tarfile.open(tar_path, "r:gz") as tf:
+    members = tf.getmembers()
+    for member in members:
+        name = member.name.replace("\\", "/")
+        if name.startswith("/") or name.startswith("../") or "/../" in name or name == "..":
+            raise SystemExit(f"unsafe tar path: {member.name}")
+        target = os.path.abspath(os.path.join(dest_abs, name))
+        if not target.startswith(dest_abs + os.sep) and target != dest_abs:
+            raise SystemExit(f"unsafe tar target: {member.name}")
+        if member.issym() or member.islnk():
+            link = member.linkname.replace("\\", "/")
+            if link.startswith("/") or link.startswith("../") or "/../" in link or link == "..":
+                raise SystemExit(f"unsafe tar link: {member.name}")
+    tf.extractall(dest_abs, members)
+PY
+}
+
+install_zip() {
+  local site_type="$1"
+  local domain="$2"
+  local source_path="$3"
+  valid_site_type "$site_type" || die "invalid site type"
+  valid_domain "$domain" || die "invalid domain"
+  [[ "$source_path" == "$UPLOAD_ROOT"/mini-panel-zip-* ]] || die "invalid source path"
+  [[ -f "$source_path" ]] || die "source zip does not exist"
+  command -v python3 >/dev/null 2>&1 || die "python3 is not installed"
+
+  local app_dir public_dir
+  app_dir="$(app_dir_for "$domain")"
+  public_dir="$app_dir/public"
+  [[ ! -e "$app_dir" ]] || die "app directory already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$app_dir"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0755 "$public_dir"
+  safe_extract_zip "$source_path" "$public_dir"
+  chown -R "$APP_USER:$APP_USER" "$app_dir"
+  find "$app_dir" -type d -exec chmod 0755 {} \;
+  find "$app_dir" -type f -exec chmod 0644 {} \;
+  rm -f "$source_path"
+
+  if [[ "$site_type" == "php" ]]; then
+    add_php_domain "$domain" "$public_dir"
+  else
+    add_static_domain "$domain" "$public_dir"
+  fi
+}
+
+issue_ssl() {
+  local domain="$1"
+  local email="$2"
+  valid_domain "$domain" || die "invalid domain"
+  valid_email "$email" || die "invalid email"
+  command -v certbot >/dev/null 2>&1 || die "certbot is not installed"
+
+  local config_path
+  config_path="$(config_path_for "$domain")"
+  [[ -f "$config_path" ]] || die "domain config does not exist"
+  grep -Fxq "$PANEL_MARKER" "$config_path" || die "refusing unmanaged config"
+
+  certbot --nginx \
+    --non-interactive \
+    --agree-tos \
+    --redirect \
+    --email "$email" \
+    -d "$domain"
+  nginx -t
+  systemctl reload nginx
+}
+
+service_action() {
+  local action="$1"
+  local domain="$2"
+  valid_service_action "$action" || die "invalid service action"
+  valid_domain "$domain" || die "invalid domain"
+
+  local service unit_path
+  service="$(service_name_for "$domain")"
+  unit_path="/etc/systemd/system/$service"
+  [[ -f "$unit_path" ]] || die "service does not exist"
+  grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged service"
+
+  case "$action" in
+    status)
+      systemctl is-active "$service" || true
+      ;;
+    start)
+      systemctl start "$service"
+      ;;
+    stop)
+      systemctl stop "$service"
+      ;;
+    restart)
+      systemctl restart "$service"
+      ;;
+  esac
+}
+
+run_command() {
+  local domain="$1"
+  local workdir="$2"
+  local command="$3"
+  valid_domain "$domain" || die "invalid domain"
+  valid_app_workdir "$domain" "$workdir" || die "invalid workdir"
+  valid_command "$command" || die "invalid command"
+  command -v sudo >/dev/null 2>&1 || die "sudo is not installed"
+  sudo -u "$APP_USER" env HOME="$(app_dir_for "$domain")" bash -lc "cd \"$workdir\" && $command"
+}
+
+ssl_status() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+  local cert="/etc/letsencrypt/live/$domain/fullchain.pem"
+  [[ -f "$cert" ]] || die "certificate not found"
+  command -v openssl >/dev/null 2>&1 || die "openssl is not installed"
+  openssl x509 -in "$cert" -noout -subject -issuer -dates
+}
+
+apply_env() {
+  local domain="$1"
+  local source_path="$2"
+  local mode="$3"
+  valid_domain "$domain" || die "invalid domain"
+  valid_env_mode "$mode" || die "invalid env mode"
+  valid_env_file "$source_path" || die "invalid env file"
+
+  local env_path app_dir target_path
+  env_path="$(env_path_for "$domain")"
+  app_dir="$(app_dir_for "$domain")"
+
+  install -d -o root -g "$APP_USER" -m 0750 "$ENV_ROOT"
+  write_env_file "$source_path" "$env_path"
+  chown root:"$APP_USER" "$env_path"
+  chmod 0640 "$env_path"
+
+  case "$mode" in
+    service)
+      local service unit_path
+      service="$(service_name_for "$domain")"
+      unit_path="/etc/systemd/system/$service"
+      [[ -f "$unit_path" ]] || die "service does not exist"
+      grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged service"
+      ensure_unit_env_file "$unit_path" "$env_path"
+      systemctl daemon-reload
+      systemctl restart "$service"
+      ;;
+    dotenv-source)
+      target_path="$app_dir/source/.env"
+      [[ -d "$app_dir/source" ]] || die "source directory does not exist"
+      write_env_file "$source_path" "$target_path"
+      chown "$APP_USER:$APP_USER" "$target_path"
+      chmod 0640 "$target_path"
+      ;;
+    dotenv-public)
+      target_path="$app_dir/public/.env"
+      [[ -d "$app_dir/public" ]] || die "public directory does not exist"
+      write_env_file "$source_path" "$target_path"
+      chown "$APP_USER:$APP_USER" "$target_path"
+      chmod 0640 "$target_path"
+      ;;
+  esac
+  restart_worker_jobs_for_domain "$domain"
+}
+
+create_backup() {
+  local domain="$1"
+  valid_domain "$domain" || die "invalid domain"
+  command -v tar >/dev/null 2>&1 || die "tar is not installed"
+
+  local config_path enabled_path app_dir unit_path env_path backup_path tmp_file staging size
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+  app_dir="$(app_dir_for "$domain")"
+  unit_path="/etc/systemd/system/$(service_name_for "$domain")"
+  env_path="$(env_path_for "$domain")"
+  backup_path="$BACKUP_ROOT/mini-panel-domain-$domain-$(date -u +%Y%m%d%H%M%S).tar.gz"
+
+  [[ -f "$config_path" ]] || die "domain config does not exist"
+  grep -Fxq "$PANEL_MARKER" "$config_path" || die "refusing unmanaged config"
+  if [[ -f "$unit_path" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged service"
+  fi
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$BACKUP_ROOT"
+  staging="$(mktemp -d)"
+  tmp_file="$(mktemp)"
+  trap 'rm -rf "$staging" "$tmp_file"' RETURN
+
+  printf 'domain=%s\ncreated_at=%s\n' "$domain" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$staging/metadata"
+  cp -a "$config_path" "$staging/nginx.conf"
+  [[ -L "$enabled_path" ]] && printf 'enabled=1\n' >>"$staging/metadata" || printf 'enabled=0\n' >>"$staging/metadata"
+  [[ -d "$app_dir" ]] && cp -a "$app_dir" "$staging/app"
+  [[ -f "$unit_path" ]] && cp -a "$unit_path" "$staging/service.unit"
+  [[ -f "$env_path" ]] && cp -a "$env_path" "$staging/env"
+
+  tar -C "$staging" -czf "$tmp_file" .
+  install -o "$APP_USER" -g "$APP_USER" -m 0640 "$tmp_file" "$backup_path"
+  size="$(stat -c%s "$backup_path")"
+  printf 'path=%s\nsize_bytes=%s\n' "$backup_path" "$size"
+}
+
+restore_backup() {
+  local domain="$1"
+  local source_path="$2"
+  valid_domain "$domain" || die "invalid domain"
+  valid_backup_path "$source_path" || die "invalid backup path"
+  [[ -f "$source_path" ]] || die "backup file does not exist"
+  command -v tar >/dev/null 2>&1 || die "tar is not installed"
+  command -v python3 >/dev/null 2>&1 || die "python3 is not installed"
+
+  local staging rollback config_path enabled_path app_dir unit_path env_path service restore_complete backup_domain enabled
+  staging="$(mktemp -d)"
+  rollback="$(mktemp -d)"
+  trap 'if [[ "${restore_complete:-0}" != "1" ]]; then restore_rollback "$domain" "$rollback" >/dev/null 2>&1 || true; fi; rm -rf "$staging" "$rollback"' RETURN
+  safe_extract_tar "$source_path" "$staging"
+
+  [[ -f "$staging/metadata" ]] || die "backup metadata missing"
+  backup_domain="$(sed -n 's/^domain=//p' "$staging/metadata" | head -n 1)"
+  [[ "$backup_domain" == "$domain" ]] || die "backup domain mismatch"
+  [[ -f "$staging/nginx.conf" ]] || die "backup nginx config missing"
+  grep -Fxq "$PANEL_MARKER" "$staging/nginx.conf" || die "backup nginx config is unmanaged"
+  enabled="$(sed -n 's/^enabled=//p' "$staging/metadata" | head -n 1)"
+
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+  app_dir="$(app_dir_for "$domain")"
+  unit_path="/etc/systemd/system/$(service_name_for "$domain")"
+  env_path="$(env_path_for "$domain")"
+  service="$(service_name_for "$domain")"
+
+  if [[ -f "$config_path" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$config_path" || die "refusing to replace unmanaged config"
+    cp -a "$config_path" "$rollback/nginx.conf"
+  fi
+  [[ -L "$enabled_path" ]] && touch "$rollback/enabled"
+  if [[ -f "$unit_path" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing to replace unmanaged service"
+    cp -a "$unit_path" "$rollback/service.unit"
+    systemctl stop "$service" >/dev/null 2>&1 || true
+  fi
+  [[ -d "$app_dir" ]] && mv "$app_dir" "$rollback/app"
+  [[ -f "$env_path" ]] && cp -a "$env_path" "$rollback/env"
+
+  install -d -o root -g root -m 0755 "$SITES_AVAILABLE"
+  install -o root -g root -m 0644 "$staging/nginx.conf" "$config_path"
+  rm -f "$enabled_path"
+  if [[ "$enabled" == "1" ]]; then
+    ln -s "$config_path" "$enabled_path"
+  fi
+  if [[ -d "$staging/app" ]]; then
+    mv "$staging/app" "$app_dir"
+    chown -R "$APP_USER:$APP_USER" "$app_dir"
+  fi
+  if [[ -f "$staging/service.unit" ]]; then
+    install -o root -g root -m 0644 "$staging/service.unit" "$unit_path"
+  else
+    rm -f "$unit_path"
+  fi
+  if [[ -f "$staging/env" ]]; then
+    install -d -o root -g "$APP_USER" -m 0750 "$ENV_ROOT"
+    install -o root -g "$APP_USER" -m 0640 "$staging/env" "$env_path"
+  else
+    rm -f "$env_path"
+  fi
+
+  nginx -t || die "nginx config test failed after restore"
+  systemctl daemon-reload
+  if [[ -f "$unit_path" ]]; then
+    systemctl enable --now "$service"
+  fi
+  systemctl reload nginx
+  restore_complete=1
+}
+
+restore_rollback() {
+  local domain="$1"
+  local rollback="$2"
+  local config_path enabled_path app_dir unit_path env_path service
+  config_path="$(config_path_for "$domain")"
+  enabled_path="$(enabled_path_for "$domain")"
+  app_dir="$(app_dir_for "$domain")"
+  unit_path="/etc/systemd/system/$(service_name_for "$domain")"
+  env_path="$(env_path_for "$domain")"
+  service="$(service_name_for "$domain")"
+
+  rm -f "$enabled_path" "$config_path" "$unit_path" "$env_path"
+  rm -rf "$app_dir"
+  [[ -f "$rollback/nginx.conf" ]] && cp -a "$rollback/nginx.conf" "$config_path"
+  [[ -f "$rollback/enabled" && -f "$config_path" ]] && ln -s "$config_path" "$enabled_path"
+  [[ -d "$rollback/app" ]] && mv "$rollback/app" "$app_dir"
+  [[ -f "$rollback/service.unit" ]] && cp -a "$rollback/service.unit" "$unit_path"
+  [[ -f "$rollback/env" ]] && cp -a "$rollback/env" "$env_path"
+  systemctl daemon-reload
+  [[ -f "$unit_path" ]] && systemctl start "$service" >/dev/null 2>&1 || true
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+}
+
+delete_backup_file() {
+  local source_path="$1"
+  valid_backup_path "$source_path" || die "invalid backup path"
+  [[ -f "$source_path" ]] || die "backup file does not exist"
+  rm -f "$source_path"
+}
+
+create_cron_job() {
+  local id="$1"
+  local domain="$2"
+  local schedule="$3"
+  local workdir="$4"
+  local command="$5"
+  valid_cron_id "$id" || die "invalid cron id"
+  valid_domain "$domain" || die "invalid domain"
+  valid_cron_schedule "$schedule" || die "invalid cron schedule"
+  valid_app_workdir "$domain" "$workdir" || die "invalid workdir"
+  valid_command "$command" || die "invalid command"
+
+  local cron_file script_path log_path
+  cron_file="$(cron_file_for "$id" "$domain")"
+  script_path="$(cron_script_for "$id" "$domain")"
+  log_path="$(cron_log_for "$id" "$domain")"
+  [[ ! -e "$cron_file" ]] || die "cron file already exists"
+  [[ ! -e "$script_path" ]] || die "cron script already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$CRON_ROOT"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$LOG_ROOT"
+  cat >"$script_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$workdir"
+$command
+EOF
+  chown "$APP_USER:$APP_USER" "$script_path"
+  chmod 0750 "$script_path"
+
+  cat >"$cron_file" <<EOF
+$PANEL_MARKER
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+$schedule $APP_USER $script_path >> $log_path 2>&1
+EOF
+  chown root:root "$cron_file"
+  chmod 0644 "$cron_file"
+}
+
+delete_cron_job() {
+  local id="$1"
+  local domain="$2"
+  valid_cron_id "$id" || die "invalid cron id"
+  valid_domain "$domain" || die "invalid domain"
+
+  local cron_file script_path
+  cron_file="$(cron_file_for "$id" "$domain")"
+  script_path="$(cron_script_for "$id" "$domain")"
+  if [[ -f "$cron_file" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$cron_file" || die "refusing unmanaged cron file"
+    rm -f "$cron_file"
+  fi
+  if [[ -f "$script_path" ]]; then
+    rm -f "$script_path"
+  fi
+}
+
+create_worker_service() {
+  local id="$1"
+  local domain="$2"
+  local name="$3"
+  local workdir="$4"
+  local command="$5"
+  valid_cron_id "$id" || die "invalid worker id"
+  valid_domain "$domain" || die "invalid domain"
+  valid_worker_name "$name" || die "invalid worker name"
+  valid_app_workdir "$domain" "$workdir" || die "invalid workdir"
+  valid_command "$command" || die "invalid command"
+
+  local unit_name unit_path script_path
+  unit_name="$(worker_unit_name_for "$id" "$domain" "$name")"
+  unit_path="/etc/systemd/system/$unit_name"
+  script_path="$(worker_script_for "$id" "$domain" "$name")"
+  [[ ! -e "$unit_path" ]] || die "worker service already exists"
+  [[ ! -e "$script_path" ]] || die "worker script already exists"
+
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$WORKER_ROOT"
+  cat >"$script_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$workdir"
+$command
+EOF
+  chown "$APP_USER:$APP_USER" "$script_path"
+  chmod 0750 "$script_path"
+
+  cat >"$unit_path" <<EOF
+$PANEL_MARKER
+[Unit]
+Description=Mini Panel worker $name for $domain
+After=network.target
+
+[Service]
+User=$APP_USER
+Group=$APP_USER
+WorkingDirectory=$workdir
+EnvironmentFile=-$(env_path_for "$domain")
+ExecStart=$script_path
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now "$unit_name"
+}
+
+worker_service_action() {
+  local action="$1"
+  local id="$2"
+  local domain="$3"
+  local name="$4"
+  valid_service_action "$action" || die "invalid service action"
+  valid_cron_id "$id" || die "invalid worker id"
+  valid_domain "$domain" || die "invalid domain"
+  valid_worker_name "$name" || die "invalid worker name"
+
+  local unit_name unit_path
+  unit_name="$(worker_unit_name_for "$id" "$domain" "$name")"
+  unit_path="/etc/systemd/system/$unit_name"
+  [[ -f "$unit_path" ]] || die "worker service does not exist"
+  grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged worker service"
+
+  case "$action" in
+    status)
+      systemctl is-active "$unit_name" || true
+      ;;
+    start)
+      systemctl start "$unit_name"
+      ;;
+    stop)
+      systemctl stop "$unit_name"
+      ;;
+    restart)
+      systemctl restart "$unit_name"
+      ;;
+  esac
+}
+
+delete_worker_service() {
+  local id="$1"
+  local domain="$2"
+  local name="$3"
+  valid_cron_id "$id" || die "invalid worker id"
+  valid_domain "$domain" || die "invalid domain"
+  valid_worker_name "$name" || die "invalid worker name"
+
+  local unit_name unit_path script_path
+  unit_name="$(worker_unit_name_for "$id" "$domain" "$name")"
+  unit_path="/etc/systemd/system/$unit_name"
+  script_path="$(worker_script_for "$id" "$domain" "$name")"
+  if [[ -f "$unit_path" ]]; then
+    grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged worker service"
+    systemctl disable --now "$unit_name" >/dev/null 2>&1 || true
+    rm -f "$unit_path"
+    systemctl daemon-reload
+  fi
+  rm -f "$script_path"
+}
+
+panel_update() {
+  local version="$1"
+  local repo_url="$2"
+  valid_release_version "$version" || die "invalid release version"
+  valid_repo_url "$repo_url" || die "invalid repo URL"
+  command -v curl >/dev/null 2>&1 || die "curl is not installed"
+  command -v systemctl >/dev/null 2>&1 || die "systemctl is not available"
+
+  local ref="$version"
+  local install_ref_args=""
+  if [[ "$version" == "latest" ]]; then
+    ref="main"
+  else
+    install_ref_args="--ref refs/tags/$version"
+  fi
+
+  local current_addr="127.0.0.1:8080"
+  if [[ -r /etc/mini-panel/mini-panel.env ]]; then
+    current_addr="$(grep -E '^MINIPANEL_ADDR=' /etc/mini-panel/mini-panel.env | tail -n 1 | cut -d= -f2- || true)"
+  fi
+  if [[ ! "$current_addr" =~ ^(127\.0\.0\.1|0\.0\.0\.0):[1-9][0-9]{0,4}$ ]]; then
+    current_addr="127.0.0.1:8080"
+  fi
+
+  local repo_slug="${repo_url#https://github.com/}"
+  local update_dir="/var/lib/mini-panel/update"
+  local script="$update_dir/update.sh"
+  install -d -o root -g root -m 0750 "$update_dir"
+  cat >"$script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+curl -fsSL "https://raw.githubusercontent.com/$repo_slug/$ref/install.sh" | bash -s -- --repo-url "$repo_url" --version "$version" $install_ref_args --app-addr "$current_addr"
+EOF
+  chmod 0700 "$script"
+
+  cat >/etc/systemd/system/mini-panel-update.service <<EOF
+$PANEL_MARKER
+[Unit]
+Description=Mini Panel self update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$script
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl reset-failed mini-panel-update.service >/dev/null 2>&1 || true
+  systemctl start --no-block mini-panel-update.service
+  echo "update started"
+}
+
+firewall_status() {
+  command -v ufw >/dev/null 2>&1 || die "ufw is not installed"
+  ufw status numbered
+}
+
+firewall_enable() {
+  command -v ufw >/dev/null 2>&1 || die "ufw is not installed"
+  ufw allow OpenSSH
+  ufw allow 80/tcp
+  ufw allow 443/tcp
+  ufw --force enable
+}
+
+firewall_allow() {
+  local port="$1"
+  local protocol="$2"
+  valid_firewall_port "$port" || die "invalid firewall port"
+  valid_firewall_protocol "$protocol" || die "invalid firewall protocol"
+  command -v ufw >/dev/null 2>&1 || die "ufw is not installed"
+  ufw allow "$port/$protocol"
+}
+
+firewall_delete() {
+  local port="$1"
+  local protocol="$2"
+  valid_firewall_port "$port" || die "invalid firewall port"
+  valid_firewall_protocol "$protocol" || die "invalid firewall protocol"
+  [[ "$port/$protocol" != "22/tcp" ]] || die "refusing to delete SSH firewall rule"
+  command -v ufw >/dev/null 2>&1 || die "ufw is not installed"
+  ufw delete allow "$port/$protocol"
+}
+
+show_logs() {
+  local kind="$1"
+  local domain="$2"
+  valid_domain "$domain" || die "invalid domain"
+
+  case "$kind" in
+    nginx)
+      grep -h -- "$domain" /var/log/nginx/access.log /var/log/nginx/error.log 2>/dev/null | tail -n 200 || true
+      ;;
+    app)
+      local service unit_path
+      service="$(service_name_for "$domain")"
+      unit_path="/etc/systemd/system/$service"
+      [[ -f "$unit_path" ]] || die "service does not exist"
+      grep -Fxq "$PANEL_MARKER" "$unit_path" || die "refusing unmanaged service"
+      journalctl -u "$service" -n 200 --no-pager
+      ;;
+    *)
+      die "invalid log kind"
+      ;;
+  esac
+}
+
+[[ $# -ge 1 ]] || die "usage: domainctl add <domain> <upstream> | create-static <domain> | delete <domain> | install-go <domain> <source> <port> | install-node <domain> <git-url> <branch> <port> <install> <build> <start> | install-node-zip <domain> <source> <port> <install> <build> <start> | install-zip <static|php> <domain> <source> | install-php-git <domain> <git-url> <branch> <public-dir> <install> | issue-ssl <domain> <email> | ssl-status <domain> | service <status|start|stop|restart> <domain> | run-command <domain> <workdir> <command> | apply-env <domain> <source> <service|dotenv-source|dotenv-public> | backup <domain> | restore <domain> <backup-path> | delete-backup <backup-path> | cron-create <id> <domain> <schedule> <workdir> <command> | cron-delete <id> <domain> | worker-create <id> <domain> <name> <workdir> <command> | worker-service <status|start|stop|restart> <id> <domain> <name> | worker-delete <id> <domain> <name> | panel-update <latest|version> <repo-url> | firewall-status | firewall-enable | firewall-allow <port> <tcp|udp> | firewall-delete <port> <tcp|udp> | logs <nginx|app> <domain>"
+
+case "$1" in
+  add)
+    [[ $# -eq 3 ]] || die "usage: domainctl add <domain> <upstream>"
+    add_domain "$2" "$3"
+    ;;
+  create-static)
+    [[ $# -eq 2 ]] || die "usage: domainctl create-static <domain>"
+    create_static_site "$2"
+    ;;
+  delete)
+    [[ $# -eq 2 ]] || die "usage: domainctl delete <domain>"
+    delete_domain "$2"
+    ;;
+  install-go)
+    [[ $# -eq 4 ]] || die "usage: domainctl install-go <domain> <source> <port>"
+    install_go "$2" "$3" "$4"
+    ;;
+  install-node)
+    [[ $# -eq 8 ]] || die "usage: domainctl install-node <domain> <git-url> <branch> <port> <install> <build> <start>"
+    install_node "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+    ;;
+  install-node-zip)
+    [[ $# -eq 7 ]] || die "usage: domainctl install-node-zip <domain> <source> <port> <install> <build> <start>"
+    install_node_zip "$2" "$3" "$4" "$5" "$6" "$7"
+    ;;
+  install-zip)
+    [[ $# -eq 4 ]] || die "usage: domainctl install-zip <static|php> <domain> <source>"
+    install_zip "$2" "$3" "$4"
+    ;;
+  install-php-git)
+    [[ $# -eq 6 ]] || die "usage: domainctl install-php-git <domain> <git-url> <branch> <public-dir> <install>"
+    install_php_git "$2" "$3" "$4" "$5" "$6"
+    ;;
+  issue-ssl)
+    [[ $# -eq 3 ]] || die "usage: domainctl issue-ssl <domain> <email>"
+    issue_ssl "$2" "$3"
+    ;;
+  ssl-status)
+    [[ $# -eq 2 ]] || die "usage: domainctl ssl-status <domain>"
+    ssl_status "$2"
+    ;;
+  service)
+    [[ $# -eq 3 ]] || die "usage: domainctl service <status|start|stop|restart> <domain>"
+    service_action "$2" "$3"
+    ;;
+  run-command)
+    [[ $# -eq 4 ]] || die "usage: domainctl run-command <domain> <workdir> <command>"
+    run_command "$2" "$3" "$4"
+    ;;
+  apply-env)
+    [[ $# -eq 4 ]] || die "usage: domainctl apply-env <domain> <source> <service|dotenv-source|dotenv-public>"
+    apply_env "$2" "$3" "$4"
+    ;;
+  logs)
+    [[ $# -eq 3 ]] || die "usage: domainctl logs <nginx|app> <domain>"
+    show_logs "$2" "$3"
+    ;;
+  backup)
+    [[ $# -eq 2 ]] || die "usage: domainctl backup <domain>"
+    create_backup "$2"
+    ;;
+  restore)
+    [[ $# -eq 3 ]] || die "usage: domainctl restore <domain> <backup-path>"
+    restore_backup "$2" "$3"
+    ;;
+  delete-backup)
+    [[ $# -eq 2 ]] || die "usage: domainctl delete-backup <backup-path>"
+    delete_backup_file "$2"
+    ;;
+  cron-create)
+    [[ $# -eq 6 ]] || die "usage: domainctl cron-create <id> <domain> <schedule> <workdir> <command>"
+    create_cron_job "$2" "$3" "$4" "$5" "$6"
+    ;;
+  cron-delete)
+    [[ $# -eq 3 ]] || die "usage: domainctl cron-delete <id> <domain>"
+    delete_cron_job "$2" "$3"
+    ;;
+  worker-create)
+    [[ $# -eq 6 ]] || die "usage: domainctl worker-create <id> <domain> <name> <workdir> <command>"
+    create_worker_service "$2" "$3" "$4" "$5" "$6"
+    ;;
+  worker-service)
+    [[ $# -eq 5 ]] || die "usage: domainctl worker-service <status|start|stop|restart> <id> <domain> <name>"
+    worker_service_action "$2" "$3" "$4" "$5"
+    ;;
+  worker-delete)
+    [[ $# -eq 4 ]] || die "usage: domainctl worker-delete <id> <domain> <name>"
+    delete_worker_service "$2" "$3" "$4"
+    ;;
+  panel-update)
+    [[ $# -eq 3 ]] || die "usage: domainctl panel-update <latest|version> <repo-url>"
+    panel_update "$2" "$3"
+    ;;
+  firewall-status)
+    [[ $# -eq 1 ]] || die "usage: domainctl firewall-status"
+    firewall_status
+    ;;
+  firewall-enable)
+    [[ $# -eq 1 ]] || die "usage: domainctl firewall-enable"
+    firewall_enable
+    ;;
+  firewall-allow)
+    [[ $# -eq 3 ]] || die "usage: domainctl firewall-allow <port> <tcp|udp>"
+    firewall_allow "$2" "$3"
+    ;;
+  firewall-delete)
+    [[ $# -eq 3 ]] || die "usage: domainctl firewall-delete <port> <tcp|udp>"
+    firewall_delete "$2" "$3"
+    ;;
+  *)
+    die "unknown command: $1"
+    ;;
+esac
