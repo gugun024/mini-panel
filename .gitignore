@@ -1,0 +1,6 @@
+.dev/
+*.db
+*.db-*
+/mini-panel
+mini-panel.exe
+mini-panel-src.tar.gz
