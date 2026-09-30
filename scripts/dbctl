@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+BACKUP_ROOT="/var/lib/mini-panel/backups"
+APP_USER="mini-panel"
+
+die() {
+  echo "dbctl: $*" >&2
+  exit 1
+}
+
+valid_ident() {
+  local value="$1"
+  [[ "$value" =~ ^[A-Za-z0-9_]{1,48}$ ]]
+}
+
+valid_backup_path() {
+  local path="$1"
+  [[ "$path" == "$BACKUP_ROOT"/mini-panel-database-* ]] || return 1
+  [[ "$path" != *".."* && "$path" != *$'\n'* && "$path" != *$'\r'* && "$path" != *" "* ]] || return 1
+}
+
+sql_escape() {
+  printf "%s" "$1" | sed "s/'/''/g"
+}
+
+create_db() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_pass="$3"
+  valid_ident "$db_name" || die "invalid database name"
+  valid_ident "$db_user" || die "invalid database user"
+  [[ ${#db_pass} -ge 12 && ${#db_pass} -le 128 ]] || die "invalid password length"
+  [[ "$db_pass" != *$'\n'* && "$db_pass" != *$'\r'* ]] || die "invalid password"
+
+  local escaped_pass
+  escaped_pass="$(sql_escape "$db_pass")"
+  mariadb <<SQL
+CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '$db_user'@'localhost' IDENTIFIED BY '$escaped_pass';
+ALTER USER '$db_user'@'localhost' IDENTIFIED BY '$escaped_pass';
+GRANT ALL PRIVILEGES ON \`$db_name\`.* TO '$db_user'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+}
+
+delete_db() {
+  local db_name="$1"
+  local db_user="$2"
+  valid_ident "$db_name" || die "invalid database name"
+  valid_ident "$db_user" || die "invalid database user"
+
+  mariadb <<SQL
+DROP DATABASE IF EXISTS \`$db_name\`;
+DROP USER IF EXISTS '$db_user'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+}
+
+backup_db() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_pass="$3"
+  valid_ident "$db_name" || die "invalid database name"
+  valid_ident "$db_user" || die "invalid database user"
+  [[ ${#db_pass} -ge 12 && ${#db_pass} -le 128 ]] || die "invalid password length"
+  command -v mariadb-dump >/dev/null 2>&1 || command -v mysqldump >/dev/null 2>&1 || die "mariadb-dump is not installed"
+  command -v gzip >/dev/null 2>&1 || die "gzip is not installed"
+
+  local dump_cmd backup_path tmp_file size
+  dump_cmd="mariadb-dump"
+  command -v mariadb-dump >/dev/null 2>&1 || dump_cmd="mysqldump"
+  backup_path="$BACKUP_ROOT/mini-panel-database-$db_name-$(date -u +%Y%m%d%H%M%S).sql.gz"
+  install -d -o "$APP_USER" -g "$APP_USER" -m 0750 "$BACKUP_ROOT"
+  tmp_file="$(mktemp)"
+  trap 'rm -f "$tmp_file"' RETURN
+  MYSQL_PWD="$db_pass" "$dump_cmd" -u "$db_user" --single-transaction --quick "$db_name" | gzip -c >"$tmp_file"
+  install -o "$APP_USER" -g "$APP_USER" -m 0640 "$tmp_file" "$backup_path"
+  size="$(stat -c%s "$backup_path")"
+  printf 'path=%s\nsize_bytes=%s\n' "$backup_path" "$size"
+}
+
+restore_db() {
+  local db_name="$1"
+  local db_user="$2"
+  local db_pass="$3"
+  local source_path="$4"
+  valid_ident "$db_name" || die "invalid database name"
+  valid_ident "$db_user" || die "invalid database user"
+  [[ ${#db_pass} -ge 12 && ${#db_pass} -le 128 ]] || die "invalid password length"
+  valid_backup_path "$source_path" || die "invalid backup path"
+  [[ -f "$source_path" ]] || die "backup file does not exist"
+  command -v gzip >/dev/null 2>&1 || die "gzip is not installed"
+  gzip -t "$source_path" || die "invalid gzip backup"
+  MYSQL_PWD="$db_pass" mariadb -u "$db_user" "$db_name" < <(gzip -dc "$source_path")
+}
+
+[[ $# -ge 2 ]] || die "usage: dbctl create <db> <user> <password> | delete <db> <user> | backup <db> <user> <password> | restore <db> <user> <password> <backup-path>"
+
+case "$1" in
+  create)
+    [[ $# -eq 4 ]] || die "usage: dbctl create <db> <user> <password>"
+    create_db "$2" "$3" "$4"
+    ;;
+  delete)
+    [[ $# -eq 3 ]] || die "usage: dbctl delete <db> <user>"
+    delete_db "$2" "$3"
+    ;;
+  backup)
+    [[ $# -eq 4 ]] || die "usage: dbctl backup <db> <user> <password>"
+    backup_db "$2" "$3" "$4"
+    ;;
+  restore)
+    [[ $# -eq 5 ]] || die "usage: dbctl restore <db> <user> <password> <backup-path>"
+    restore_db "$2" "$3" "$4" "$5"
+    ;;
+  *)
+    die "unknown command: $1"
+    ;;
+esac
