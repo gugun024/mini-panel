@@ -1,0 +1,1064 @@
+
+{{define "layout_start"}}
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini Panel</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body{{if .Session}} class="has-nav"{{end}}>
+{{end}}
+
+{{define "layout_end"}}
+</body>
+</html>
+{{end}}
+
+{{define "app_header"}}
+<button class="scrim" id="side-scrim" aria-label="Tutup menu" tabindex="-1"></button>
+<div class="topbar">
+  <button class="menu-btn" id="menu-btn" type="button" aria-label="Buka menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <span class="brand"><span class="brand-mark">MP</span><span>Mini Panel</span></span>
+</div>
+<aside class="sidebar">
+  <a class="side-brand" href="/domains"><span class="brand-mark">MP</span><span>Mini Panel</span></a>
+  <nav class="side-nav">
+    <div class="side-label">Kelola</div>
+    <a class="side-link" data-nav="/domains" href="/domains"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.9 5.7 3.9 9S14.5 18.4 12 21c-2.5-2.6-3.9-5.7-3.9-9S9.5 5.6 12 3z"/></svg><span>Domains</span></a>
+    <a class="side-link" data-nav="/files" href="/files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Files</span></a>
+    <a class="side-link" data-nav="/databases" href="/databases"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg><span>Databases</span></a>
+    <a class="side-link" data-nav="/backups" href="/backups"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 19h16"/></svg><span>Backups</span></a>
+    <div class="side-label">Otomatisasi</div>
+    <a class="side-link" data-nav="/jobs" href="/jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L4 14h6l-1 7 9-11h-6z"/></svg><span>Jobs</span></a>
+    <a class="side-link" data-nav="/workers" href="/workers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.14-1.4l2-1.55-2-3.46-2.35.95A7 7 0 0 0 14.1 5.1L13.75 2.6h-3.5L9.9 5.1a7 7 0 0 0-2.42 1.4l-2.35-.95-2 3.46 2 1.55a7 7 0 0 0 0 2.8l-2 1.55 2 3.46 2.35-.95a7 7 0 0 0 2.41 1.4l.36 2.54h3.5l.35-2.54a7 7 0 0 0 2.42-1.4l2.35.95 2-3.46-2-1.55c.1-.46.14-.92.14-1.4z"/></svg><span>Workers</span></a>
+    <a class="side-link" data-nav="/cron" href="/cron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>Cron</span></a>
+    <div class="side-label">Server</div>
+    <a class="side-link" data-nav="/monitor" href="/monitor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19V9M10 19V5M16 19v-8M22 19H2"/></svg><span>Monitor</span></a>
+    <a class="side-link" data-nav="/firewall" href="/firewall"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.2 8.3-7 10-3.8-1.7-7-5-7-10V6z"/><path d="M9.5 12l2 2 3.5-4"/></svg><span>Firewall</span></a>
+    <a class="side-link" data-nav="/settings" href="/settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.04 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 1 1 4 0v.09c0 .68.4 1.3 1.04 1.56.6.26 1.32.13 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01c.26.6.88 1.04 1.56 1.04H21a2 2 0 1 1 0 4h-.09c-.68 0-1.3.4-1.51 1.04z"/></svg><span>Settings</span></a>
+  </nav>
+  <div class="side-footer">
+    <div class="side-user"><span class="avatar">{{if .Session}}{{$u := .Session.Username}}{{if $u}}{{slice $u 0 1}}{{else}}A{{end}}{{else}}A{{end}}</span><span>{{if .Session}}{{.Session.Username}}{{else}}Admin{{end}}</span></div>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <button type="submit">Logout</button>
+    </form>
+    {{if .PanelVersion}}<div class="side-ver">Mini Panel v{{.PanelVersion}}</div>{{end}}
+  </div>
+</aside>
+{{end}}
+
+{{define "login"}}
+{{template "layout_start" .}}
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-brand"><span class="brand-mark">MP</span><span>Mini Panel</span></div>
+    <h1>Selamat datang kembali</h1>
+    <p class="login-sub">Masuk untuk mengelola server dan aplikasi Anda.</p>
+    {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+    <form class="stack" method="post" action="/login">
+      <input type="hidden" name="csrf_token" value="{{.LoginCSRF}}">
+      <div>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" placeholder="admin" required>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+      <button type="submit">Masuk ke Panel</button>
+    </form>
+  </div>
+</div>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "domains"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Domains</h1>
+      <p class="subhead">Kelola domain, runtime aplikasi, SSL, dan file website.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Domain aktif</span><strong>{{len .Domains}}</strong></section>
+    <section class="stat"><span>Runtime</span><strong>5</strong></section>
+    <section class="stat"><span>Mode deploy</span><strong>7</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <form class="panel stack" method="post" action="/domains/deploy" enctype="multipart/form-data" id="deploy-form">
+      <h2>Add Site</h2>
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <input type="hidden" id="deploy_type" name="deploy_type" value="static_site">
+      <div class="deploy-grid">
+        <div>
+          <label for="deploy_domain">Domain</label>
+          <input id="deploy_domain" name="domain" placeholder="example.com" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="runtime">Runtime</label>
+          <select id="runtime" name="runtime">
+            <option value="static">Static</option>
+            <option value="php">PHP</option>
+            <option value="node">Node.js</option>
+            <option value="go">Go</option>
+            <option value="proxy">Proxy</option>
+          </select>
+        </div>
+        <div>
+          <label for="source">Source</label>
+          <select id="source" name="source">
+            <option value="blank">Blank Site</option>
+          </select>
+        </div>
+      </div>
+      <section class="deploy-fields stack" data-deploy-fields="static_site">
+        <p class="hint">Creates a web root and default <code>index.html</code>.</p>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="reverse_proxy" hidden>
+        <div>
+          <label for="upstream_url">Local URL</label>
+          <input id="upstream_url" name="upstream_url" placeholder="http://127.0.0.1:3000" autocomplete="off">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="node_git" hidden>
+        <div>
+          <label for="node_git">Repository URL</label>
+          <input id="node_git" name="git_url" placeholder="https://github.com/user/app.git" autocomplete="off">
+        </div>
+        <div class="deploy-grid">
+          <div>
+            <label for="node_branch">Branch</label>
+            <input id="node_branch" name="branch" placeholder="main" autocomplete="off">
+          </div>
+          <div>
+            <label for="node_port">App Port</label>
+            <input id="node_port" name="port" placeholder="3000" inputmode="numeric" autocomplete="off">
+          </div>
+        </div>
+        <div>
+          <label for="node_install_command">Install Command</label>
+          <input id="node_install_command" name="install_command" value="npm install" autocomplete="off">
+        </div>
+        <div>
+          <label for="build_command">Build Command</label>
+          <input id="build_command" name="build_command" value="npm run build" autocomplete="off">
+        </div>
+        <div>
+          <label for="start_command">Start Command</label>
+          <input id="start_command" name="start_command" value="npm start" autocomplete="off">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="node_zip" hidden>
+        <div>
+          <label for="node_zip_archive">Project ZIP</label>
+          <input id="node_zip_archive" name="archive" type="file">
+        </div>
+        <div>
+          <label for="node_zip_port">App Port</label>
+          <input id="node_zip_port" name="port" placeholder="3000" inputmode="numeric" autocomplete="off">
+        </div>
+        <div>
+          <label for="node_zip_install_command">Install Command</label>
+          <input id="node_zip_install_command" name="install_command" value="npm install" autocomplete="off">
+        </div>
+        <div>
+          <label for="node_zip_build_command">Build Command</label>
+          <input id="node_zip_build_command" name="build_command" value="npm run build" autocomplete="off">
+        </div>
+        <div>
+          <label for="node_zip_start_command">Start Command</label>
+          <input id="node_zip_start_command" name="start_command" value="npm start" autocomplete="off">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="static_zip" hidden>
+        <div>
+          <label for="static_archive">Project ZIP</label>
+          <input id="static_archive" name="archive" type="file">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="php_zip" hidden>
+        <div>
+          <label for="php_archive">Project ZIP</label>
+          <input id="php_archive" name="archive" type="file">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="php_git" hidden>
+        <div>
+          <label for="php_git">Repository URL</label>
+          <input id="php_git" name="git_url" placeholder="https://github.com/user/app.git" autocomplete="off">
+        </div>
+        <div class="deploy-grid">
+          <div>
+            <label for="php_branch">Branch</label>
+            <input id="php_branch" name="branch" placeholder="main" autocomplete="off">
+          </div>
+          <div>
+            <label for="public_dir">Document Root</label>
+            <input id="public_dir" name="public_dir" value="public" autocomplete="off">
+          </div>
+        </div>
+        <div>
+          <label for="php_install_command">Install Command</label>
+          <input id="php_install_command" name="install_command" value="composer install --no-dev --optimize-autoloader" autocomplete="off">
+        </div>
+      </section>
+      <section class="deploy-fields stack" data-deploy-fields="go_binary" hidden>
+        <div>
+          <label for="go_port">App Port</label>
+          <input id="go_port" name="port" placeholder="9001" inputmode="numeric" autocomplete="off">
+        </div>
+        <div>
+          <label for="go_binary">Linux Binary</label>
+          <input id="go_binary" name="binary" type="file">
+        </div>
+      </section>
+      <button type="submit">Create Site</button>
+    </form>
+    <section class="panel">
+      <h2>Domain Aktif</h2>
+      {{if .Domains}}
+      <table class="domain-table">
+        <thead><tr><th>Domain</th><th>Target</th><th>Actions</th></tr></thead>
+        <tbody>
+        {{range .Domains}}
+          <tr>
+            <td>
+              <div class="domain-title">
+                <a href="/domains/{{.ID}}"><strong>{{.Domain}}</strong></a>
+                <div class="domain-meta">
+                  {{if .SSLEnabled}}<span class="badge https">HTTPS</span>{{else}}<span class="badge http">HTTP</span>{{end}}
+                  <span class="badge neutral">{{.SiteType}}</span>
+                  <span class="badge">{{.Status}}</span>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div class="domain-target">
+                <code title="{{.UpstreamURL}}">{{.UpstreamURL}}</code>
+                <code title="{{.NginxPath}}">{{.NginxPath}}</code>
+              </div>
+            </td>
+            <td>
+              <div class="domain-actions">
+                <div class="actions">
+                  <a class="button secondary" href="/domains/{{.ID}}">Detail</a>
+                  {{if ne .SiteType "reverse_proxy"}}<a class="button secondary" href="/files/{{.ID}}">Files</a>{{end}}
+                </div>
+                <form class="ssl-inline" method="post" action="/domains/{{.ID}}/ssl">
+                  <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                  <input name="email" placeholder="admin@example.com" autocomplete="email" required>
+                  <button type="submit">SSL</button>
+                </form>
+                <form method="post"  data-confirm="Hapus domain ini? Nginx config dan service ikut dihapus."action="/domains/{{.ID}}/delete">
+                  <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                  <button class="danger" type="submit">Hapus</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada domain.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "domain_detail"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{.Domain.Domain}}</h1>
+      <p class="subhead">Detail domain, service, environment, SSL, dan log.</p>
+    </div>
+    {{if .Domain.SSLEnabled}}<span class="badge https">HTTPS</span>{{else}}<span class="badge http">HTTP</span>{{end}}
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Overview</h2>
+      <p class="hint">Type: <code>{{.Domain.SiteType}}</code></p>
+      <p class="hint">Protocol: {{if .Domain.SSLEnabled}}<span class="badge https">HTTPS</span>{{else}}<span class="badge http">HTTP</span>{{end}}</p>
+      <p class="hint">Status: <span class="badge">{{.Domain.Status}}</span></p>
+      <p class="hint">Nginx: <code>{{.Domain.NginxPath}}</code></p>
+      {{if .Domain.AppPath}}<p class="hint">App Path: <code>{{.Domain.AppPath}}</code></p>{{end}}
+      {{if .Domain.UpstreamURL}}<p class="hint">Target: <code>{{.Domain.UpstreamURL}}</code></p>{{end}}
+      {{if .DNSCheck}}
+      <p class="hint">DNS: {{if .DNSCheck.Matches}}<span class="badge">Pointing here</span>{{else}}<span class="badge warning">Check needed</span>{{end}}</p>
+      {{if .DNSCheck.Records}}<p class="hint">Records: {{range .DNSCheck.Records}}<code>{{.}}</code> {{end}}</p>{{end}}
+      {{if .DNSCheck.Error}}<p class="hint">DNS Error: <code>{{.DNSCheck.Error}}</code></p>{{end}}
+      {{end}}
+      <div class="actions">
+        {{if ne .Domain.SiteType "reverse_proxy"}}<a class="button secondary" href="/files/{{.Domain.ID}}">Files</a>{{end}}
+        <a class="button secondary" href="http://{{.Domain.Domain}}/" target="_blank" rel="noreferrer">Open</a>
+      </div>
+    </section>
+    <section class="panel stack">
+      <h2>SSL</h2>
+      <form class="actions" method="post" action="/domains/{{.Domain.ID}}/ssl">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <input name="email" placeholder="admin@example.com" autocomplete="email" required>
+        <button type="submit">Issue SSL</button>
+      </form>
+      {{if .SSLStatus}}<pre class="prebox">{{.SSLStatus}}</pre>{{else}}<p class="hint">Belum ada data sertifikat dari Let's Encrypt untuk domain ini.</p>{{end}}
+    </section>
+    {{if .CanService}}
+    <section class="panel stack">
+      <h2>Service</h2>
+      <p class="hint">Status: <code>{{.ServiceStatus}}</code></p>
+      <form class="actions" method="post" action="/domains/{{.Domain.ID}}/service">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <button class="secondary" name="action" value="start" type="submit">Start</button>
+        <button class="secondary" name="action" value="stop" type="submit">Stop</button>
+        <button name="action" value="restart" type="submit">Restart</button>
+      </form>
+    </section>
+    {{end}}
+    {{if .Domain.AppPath}}
+    <section class="panel stack wide">
+      <h2>Command Runner</h2>
+      <form class="stack" method="post" action="/domains/{{.Domain.ID}}/command">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <div>
+          <label for="command">Command</label>
+          <input id="command" name="command" placeholder="npm run build" autocomplete="off" required>
+        </div>
+        <button type="submit">Run Command</button>
+        <p class="hint">Command berjalan sebagai user <code>mini-panel</code> dari folder aplikasi domain dan hasilnya masuk ke Jobs.</p>
+      </form>
+      <div class="actions">
+        {{if eq .Domain.SiteType "node_next"}}
+        <form method="post" action="/domains/{{.Domain.ID}}/command">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <input type="hidden" name="command" value="npm install">
+          <button class="secondary" type="submit">npm install</button>
+        </form>
+        <form method="post" action="/domains/{{.Domain.ID}}/command">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <input type="hidden" name="command" value="npm run build">
+          <button class="secondary" type="submit">npm build</button>
+        </form>
+        {{end}}
+        {{if or (eq .Domain.SiteType "php") (eq .Domain.SiteType "php_git")}}
+        <form method="post" action="/domains/{{.Domain.ID}}/command">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <input type="hidden" name="command" value="php artisan migrate --force">
+          <button class="secondary" type="submit">artisan migrate</button>
+        </form>
+        <form method="post" action="/domains/{{.Domain.ID}}/command">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <input type="hidden" name="command" value="composer install --no-dev --optimize-autoloader">
+          <button class="secondary" type="submit">composer install</button>
+        </form>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
+    <section class="panel stack wide">
+      <h2>Environment</h2>
+      <div class="grid">
+        <form class="stack" method="post" action="/domains/{{.Domain.ID}}/env">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <div>
+            <label for="env_name">Name</label>
+            <input id="env_name" name="name" placeholder="APP_ENV" autocomplete="off" required>
+          </div>
+          <div>
+            <label for="env_value">Value</label>
+            <textarea class="env-value" id="env_value" name="value" autocomplete="off" spellcheck="false"></textarea>
+          </div>
+          <label class="check-inline"><input name="is_secret" type="checkbox"> Secret</label>
+          <button type="submit">Save Env</button>
+          <p class="hint">Go/Node env diterapkan ke systemd service. PHP env ditulis ke file <code>.env</code>.</p>
+        </form>
+        <form class="stack" method="post" action="/domains/{{.Domain.ID}}/attach-database">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <div>
+            <label for="database_id">Attach Database</label>
+            <select id="database_id" name="database_id" required>
+              {{range .Databases}}<option value="{{.ID}}">{{.Name}} / {{.Username}}</option>{{end}}
+            </select>
+          </div>
+          <button type="submit" {{if not .Databases}}disabled{{end}}>Attach</button>
+          <p class="hint">Menambahkan <code>DB_HOST</code>, <code>DB_NAME</code>, <code>DB_USER</code>, <code>DB_PASSWORD</code>, Laravel aliases, dan <code>DATABASE_URL</code>.</p>
+        </form>
+      </div>
+      {{if .EnvVars}}
+      <table>
+        <thead><tr><th>Name</th><th>Value</th><th></th></tr></thead>
+        <tbody>
+        {{range .EnvVars}}
+          <tr>
+            <td><code>{{.Name}}</code></td>
+            <td><code>{{if .IsSecret}}******{{else}}{{.Value}}{{end}}</code></td>
+            <td>
+              <form method="post"  data-confirm="Hapus environment variable ini?"action="/domains/{{$.Domain.ID}}/env/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="danger" type="submit">Hapus</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada environment variable.</p>
+      {{end}}
+    </section>
+    <section class="panel stack wide">
+      <h2>Nginx Logs</h2>
+      <textarea readonly spellcheck="false">{{if .NginxLogs}}{{.NginxLogs}}{{else}}No Nginx log lines found for this domain.{{end}}</textarea>
+    </section>
+    {{if .CanService}}
+    <section class="panel stack wide">
+      <h2>App Logs</h2>
+      <textarea readonly spellcheck="false">{{if .AppLogs}}{{.AppLogs}}{{else}}No app log lines found.{{end}}</textarea>
+    </section>
+    {{end}}
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "jobs"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Jobs</h1>
+      <p class="subhead">Pantau proses deploy dan hasil eksekusi terbaru.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Total job</span><strong>{{len .Jobs}}</strong></section>
+    <section class="stat"><span>Refresh</span><strong>3s</strong></section>
+    <section class="stat"><span>Log</span><strong>200</strong></section>
+  </div>
+  <section class="panel">
+    {{if .Jobs}}
+    <table>
+      <thead><tr><th>ID</th><th>Type</th><th>Domain</th><th>Status</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+      {{range .Jobs}}
+        <tr>
+          <td>#{{.ID}}</td>
+          <td>{{.Type}}</td>
+          <td><code>{{.Domain}}</code></td>
+          <td><span class="badge neutral">{{.Status}}</span></td>
+          <td>{{.UpdatedAt}}</td>
+          <td><a class="button secondary" href="/jobs/{{.ID}}">View</a></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="topline">Belum ada job.</p>
+    {{end}}
+  </section>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "job_detail"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Job #{{.Job.ID}}</h1>
+      <p class="subhead">{{.Job.Type}} untuk {{.Job.Domain}}</p>
+    </div>
+    <span class="badge neutral">{{.Job.Status}}</span>
+  </div>
+  {{if or (eq .Job.Status "queued") (eq .Job.Status "running")}}<meta http-equiv="refresh" content="3">{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Overview</h2>
+      <p class="hint">Type: <code>{{.Job.Type}}</code></p>
+      <p class="hint">Domain: <code>{{.Job.Domain}}</code></p>
+      <p class="hint">Status: <code>{{.Job.Status}}</code></p>
+      <p class="hint">Created: <code>{{.Job.CreatedAt}}</code></p>
+      {{if .Job.StartedAt}}<p class="hint">Started: <code>{{.Job.StartedAt}}</code></p>{{end}}
+      {{if .Job.FinishedAt}}<p class="hint">Finished: <code>{{.Job.FinishedAt}}</code></p>{{end}}
+      {{if .Job.Error}}<p class="hint">Error: <code>{{.Job.Error}}</code></p>{{end}}
+      <div class="actions">
+        <a class="button secondary" href="/jobs">Jobs</a>
+        <a class="button secondary" href="/domains">Domains</a>
+      </div>
+    </section>
+    <section class="panel stack wide">
+      <h2>Log</h2>
+      <pre class="prebox">{{if .Job.Log}}{{.Job.Log}}{{else}}Waiting for log output...{{end}}</pre>
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "monitor"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Resource Monitor</h1>
+      <p class="subhead">Ringkasan resource VPS dan status service utama.</p>
+    </div>
+  </div>
+  <div class="metric-grid">
+    <section class="metric"><span>CPU</span><strong>{{.Metrics.CPUPercent}}</strong><small>Load {{.Metrics.LoadAverage}}</small></section>
+    <section class="metric"><span>Memory</span><strong>{{.Metrics.MemoryPercent}}</strong><small>{{.Metrics.MemoryUsed}} / {{.Metrics.MemoryTotal}}</small></section>
+    <section class="metric"><span>Disk /</span><strong>{{.Metrics.DiskPercent}}</strong><small>{{.Metrics.DiskUsed}} / {{.Metrics.DiskTotal}}</small></section>
+    <section class="metric"><span>Uptime</span><strong>{{.Metrics.Uptime}}</strong><small>Server runtime</small></section>
+  </div>
+  <div class="grid">
+    <section class="panel">
+      <h2>System Services</h2>
+      <div class="status-list">
+        {{range .Services}}
+        <div class="status-row"><strong>{{.Name}}</strong><span class="badge neutral">{{.Status}}</span></div>
+        {{end}}
+      </div>
+    </section>
+    <section class="panel">
+      <h2>App Services</h2>
+      {{if .DomainServices}}
+      <div class="status-list">
+        {{range .DomainServices}}
+        <div class="status-row"><strong>{{.Name}}</strong><span class="badge neutral">{{.Status}}</span></div>
+        {{end}}
+      </div>
+      {{else}}
+      <p class="topline">Belum ada domain dengan service systemd.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "firewall"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Firewall</h1>
+      <p class="subhead">Kelola rule dasar UFW untuk akses VPS.</p>
+    </div>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Actions</h2>
+      <form class="stack" method="post" action="/firewall/enable">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <button type="submit">Enable Safe Defaults</button>
+        <p class="hint">Membuka OpenSSH, 80/tcp, 443/tcp lalu mengaktifkan UFW.</p>
+      </form>
+      <form class="stack" method="post" action="/firewall/allow">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <div class="deploy-grid">
+          <div>
+            <label for="allow_port">Port</label>
+            <input id="allow_port" name="port" placeholder="8080" inputmode="numeric" required>
+          </div>
+          <div>
+            <label for="allow_protocol">Protocol</label>
+            <select id="allow_protocol" name="protocol">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit">Allow Port</button>
+      </form>
+      <form class="stack" method="post"  data-confirm="Hapus rule firewall ini?"action="/firewall/delete">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <div class="deploy-grid">
+          <div>
+            <label for="delete_port">Port</label>
+            <input id="delete_port" name="port" placeholder="8080" inputmode="numeric" required>
+          </div>
+          <div>
+            <label for="delete_protocol">Protocol</label>
+            <select id="delete_protocol" name="protocol">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+          </div>
+        </div>
+        <button class="danger" type="submit">Delete Allow Rule</button>
+        <p class="hint">Rule SSH 22/tcp tidak bisa dihapus dari panel.</p>
+      </form>
+    </section>
+    <section class="panel stack">
+      <h2>UFW Status</h2>
+      <pre class="prebox">{{.FirewallStatus}}</pre>
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "settings"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Settings</h1>
+      <p class="subhead">Update panel dari release GitHub tanpa SSH manual.</p>
+    </div>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Panel</h2>
+      <p class="hint">Current version: <code>{{.PanelVersion}}</code></p>
+      <p class="hint">Binary yang dirilis GitHub Actions akan dipakai saat update.</p>
+    </section>
+    <form class="panel stack" method="post" action="/settings/update">
+      <h2>Update Panel</h2>
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <div>
+        <label for="version">Version</label>
+        <input id="version" name="version" value="latest" autocomplete="off" required>
+      </div>
+      <div>
+        <label for="repo_url">GitHub Repo URL</label>
+        <input id="repo_url" name="repo_url" value="{{.RepoURL}}" autocomplete="off" required>
+      </div>
+      <button type="submit">Start Update</button>
+      <p class="hint">Gunakan <code>latest</code> untuk release terbaru atau tag seperti <code>v0.1.6</code>.</p>
+    </form>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "workers"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Workers</h1>
+      <p class="subhead">Kelola background service untuk queue, scheduler, dan proses pendukung aplikasi.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Total worker</span><strong>{{len .Workers}}</strong></section>
+    <section class="stat"><span>Domain app</span><strong>{{len .Domains}}</strong></section>
+    <section class="stat"><span>Runtime</span><strong>systemd</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <form class="panel stack" method="post" action="/workers">
+      <h2>Tambah Worker</h2>
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <div>
+        <label for="worker_domain_id">Domain/App</label>
+        <select id="worker_domain_id" name="domain_id" required>
+          {{range .Domains}}<option value="{{.ID}}">{{.Domain}} / {{.SiteType}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="worker_name">Name</label>
+        <input id="worker_name" name="name" placeholder="queue" autocomplete="off" required>
+      </div>
+      <div>
+        <label for="worker_command">Command</label>
+        <input id="worker_command" name="command" placeholder="php artisan queue:work --sleep=3 --tries=3" autocomplete="off" required>
+      </div>
+      <button type="submit" {{if not .Domains}}disabled{{end}}>Tambah Worker</button>
+      <p class="hint">Worker berjalan sebagai service systemd user <code>mini-panel</code> dari folder aplikasi domain.</p>
+    </form>
+    <section class="panel">
+      <h2>Worker Aktif</h2>
+      {{if .Workers}}
+      <table>
+        <thead><tr><th>Worker</th><th>Command</th><th>Service</th><th></th></tr></thead>
+        <tbody>
+        {{range .Workers}}
+          <tr>
+            <td>
+              <strong>{{.Name}}</strong><br>
+              <code>{{.DomainName}}</code>
+            </td>
+            <td>
+              <code title="{{.Command}}">{{.Command}}</code><br>
+              <code title="{{.Workdir}}">{{.Workdir}}</code>
+            </td>
+            <td><span class="badge neutral">{{.Status}}</span></td>
+            <td class="actions">
+              <form method="post" action="/workers/{{.ID}}/service">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="secondary" name="action" value="start" type="submit">Start</button>
+              </form>
+              <form method="post" action="/workers/{{.ID}}/service">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="secondary" name="action" value="stop" type="submit">Stop</button>
+              </form>
+              <form method="post" action="/workers/{{.ID}}/service">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button name="action" value="restart" type="submit">Restart</button>
+              </form>
+              <form method="post"  data-confirm="Hapus worker ini? Service systemd ikut dihapus."action="/workers/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="danger" type="submit">Hapus</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada worker.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "cron"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Cron Jobs</h1>
+      <p class="subhead">Jalankan command terjadwal di folder aplikasi domain.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Total cron</span><strong>{{len .CronJobs}}</strong></section>
+    <section class="stat"><span>Domain app</span><strong>{{len .Domains}}</strong></section>
+    <section class="stat"><span>User</span><strong>mini-panel</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <form class="panel stack" method="post" action="/cron">
+      <h2>Tambah Cron</h2>
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <div>
+        <label for="cron_domain_id">Domain/App</label>
+        <select id="cron_domain_id" name="domain_id" required>
+          {{range .Domains}}<option value="{{.ID}}">{{.Domain}} / {{.SiteType}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="cron_schedule">Schedule</label>
+        <input id="cron_schedule" name="schedule" placeholder="*/5 * * * *" autocomplete="off" required>
+      </div>
+      <div>
+        <label for="cron_command">Command</label>
+        <input id="cron_command" name="command" placeholder="php artisan schedule:run" autocomplete="off" required>
+      </div>
+      <button type="submit" {{if not .Domains}}disabled{{end}}>Tambah Cron</button>
+      <p class="hint">Format schedule memakai 5 field cron. Command berjalan sebagai user <code>mini-panel</code> dari folder aplikasi domain.</p>
+    </form>
+    <section class="panel">
+      <h2>Cron Aktif</h2>
+      {{if .CronJobs}}
+      <table>
+        <thead><tr><th>Domain</th><th>Schedule</th><th>Command</th><th></th></tr></thead>
+        <tbody>
+        {{range .CronJobs}}
+          <tr>
+            <td>
+              <strong>{{.DomainName}}</strong><br>
+              <span class="badge">{{.Status}}</span>
+            </td>
+            <td><code>{{.Schedule}}</code></td>
+            <td>
+              <code title="{{.Command}}">{{.Command}}</code><br>
+              <code title="{{.Workdir}}">{{.Workdir}}</code>
+            </td>
+            <td>
+              <form method="post"  data-confirm="Hapus cron job ini?"action="/cron/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="danger" type="submit">Hapus</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada cron job.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "backups"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Backups</h1>
+      <p class="subhead">Backup dan restore domain aplikasi serta MariaDB database.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Total backup</span><strong>{{len .Backups}}</strong></section>
+    <section class="stat"><span>Domain</span><strong>{{len .Domains}}</strong></section>
+    <section class="stat"><span>Database</span><strong>{{len .Databases}}</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Buat Backup</h2>
+      <form class="stack" method="post" action="/backups/domain">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <div>
+          <label for="domain_id">Domain/App</label>
+          <select id="domain_id" name="domain_id" required>
+            {{range .Domains}}<option value="{{.ID}}">{{.Domain}}</option>{{end}}
+          </select>
+        </div>
+        <button type="submit" {{if not .Domains}}disabled{{end}}>Backup Domain</button>
+        <p class="hint">Menyimpan app folder, Nginx config, systemd unit, dan environment file jika tersedia.</p>
+      </form>
+      <form class="stack" method="post" action="/backups/database">
+        <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+        <div>
+          <label for="database_id">MariaDB Database</label>
+          <select id="database_id" name="database_id" required>
+            {{range .Databases}}<option value="{{.ID}}">{{.Name}} / {{.Username}}</option>{{end}}
+          </select>
+        </div>
+        <button type="submit" {{if not .Databases}}disabled{{end}}>Backup Database</button>
+        <p class="hint">Menyimpan dump SQL gzip ke folder backup Mini Panel.</p>
+      </form>
+    </section>
+    <section class="panel">
+      <h2>Backup Tersimpan</h2>
+      {{if .Backups}}
+      <table>
+        <thead><tr><th>Target</th><th>File</th><th>Size</th><th></th></tr></thead>
+        <tbody>
+        {{range .Backups}}
+          <tr>
+            <td>
+              <strong>{{.TargetName}}</strong><br>
+              <span class="badge neutral">{{.TargetType}}</span>
+            </td>
+            <td><code title="{{.Path}}">{{.Path}}</code></td>
+            <td>{{.SizeBytes}} bytes</td>
+            <td class="actions">
+              <form method="post"  data-confirm="Restore backup ini? Data saat ini akan ditimpa."action="/backups/{{.ID}}/restore">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="secondary" type="submit">Restore</button>
+              </form>
+              <form method="post"  data-confirm="Hapus file backup ini secara permanen?"action="/backups/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="danger" type="submit">Hapus</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada backup.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "databases"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Databases</h1>
+      <p class="subhead">Kelola MariaDB, credential aplikasi, dan Adminer.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Database aktif</span><strong>{{len .Databases}}</strong></section>
+    <section class="stat"><span>Engine</span><strong>MariaDB</strong></section>
+    <section class="stat"><span>Manager</span><strong>{{if .AdminerEnabled}}Adminer{{else}}Off{{end}}</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <form class="panel stack" method="post" action="/databases">
+      <h2>Buat MariaDB Database</h2>
+      <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+      <div>
+        <label for="db_name">Database Name</label>
+        <input id="db_name" name="name" placeholder="app_db" autocomplete="off" required>
+      </div>
+      <div>
+        <label for="db_user">Database User</label>
+        <input id="db_user" name="username" placeholder="app_user" autocomplete="off" required>
+      </div>
+      <div>
+        <label for="db_password">Password</label>
+        <input id="db_password" name="password" type="password" autocomplete="new-password" required>
+      </div>
+      <button type="submit">Buat Database</button>
+    </form>
+    <section class="panel">
+      <h2>Database Aktif</h2>
+      {{if .Databases}}
+      <table>
+        <thead><tr><th>Name</th><th>User</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {{range .Databases}}
+          <tr>
+            <td><strong>{{.Name}}</strong></td>
+            <td><code>{{.Username}}</code></td>
+            <td><span class="badge">{{.Status}}</span></td>
+            <td class="actions">
+              {{if $.AdminerEnabled}}<a class="button secondary" href="/databases/{{.ID}}/adminer" target="_blank" rel="noreferrer">Adminer</a>{{end}}
+              <form method="post"  data-confirm="Hapus database ini? Seluruh data akan hilang permanen."action="/databases/{{.ID}}/delete">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <button class="danger" type="submit">Hapus</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <p class="topline">Belum ada database.</p>
+      {{end}}
+    </section>
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
+
+{{define "files"}}
+{{template "layout_start" .}}
+{{template "app_header" .}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>Files</h1>
+      <p class="subhead">Kelola file aplikasi yang dibuat lewat Mini Panel.</p>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <section class="stat"><span>Domain file</span><strong>{{len .FileDomains}}</strong></section>
+    <section class="stat"><span>Upload limit</span><strong>32MB</strong></section>
+    <section class="stat"><span>Scope</span><strong>App</strong></section>
+  </div>
+  {{if .Error}}<div class="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  <div class="grid">
+    <section class="panel stack">
+      <h2>Domain</h2>
+      {{if .FileDomains}}
+        {{range .FileDomains}}
+          <a class="button secondary" href="/files/{{.ID}}">{{.Domain}}</a>
+        {{end}}
+      {{else}}
+        <p class="topline">Belum ada domain dengan folder aplikasi.</p>
+      {{end}}
+    </section>
+    {{if .SelectedDomain}}
+    <section class="panel stack">
+      <h2>{{.SelectedDomain.Domain}}</h2>
+      <p class="hint">Root: <code>{{.FileView.RootLabel}}</code></p>
+      <p class="hint">Path: <code>{{.FileView.CurrentPath}}</code></p>
+      <div class="actions">
+        <a class="button secondary" href="/files/{{.SelectedDomain.ID}}?path={{.FileView.ParentPath}}">Naik</a>
+        <a class="button secondary" href="/files/{{.SelectedDomain.ID}}">Root</a>
+      </div>
+      {{if .FileView.IsEditing}}
+        <form class="stack" method="post" action="/files/{{.SelectedDomain.ID}}/save">
+          <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+          <input type="hidden" name="path" value="{{.FileView.FilePath}}">
+          <div>
+            <label for="content">Edit {{.FileView.FileName}}</label>
+            <textarea id="content" name="content" spellcheck="false">{{.FileView.FileContent}}</textarea>
+          </div>
+          <button type="submit">Simpan</button>
+        </form>
+      {{else}}
+        <div class="actions">
+          <form class="actions" method="post" action="/files/{{.SelectedDomain.ID}}/mkdir">
+            <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+            <input type="hidden" name="path" value="{{.FileView.CurrentPath}}">
+            <input name="name" placeholder="folder-baru" autocomplete="off" required>
+            <button type="submit">Buat Folder</button>
+          </form>
+          <form class="actions" method="post" action="/files/{{.SelectedDomain.ID}}/upload" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+            <input type="hidden" name="path" value="{{.FileView.CurrentPath}}">
+            <input name="file" type="file" required>
+            <button type="submit">Upload</button>
+          </form>
+        </div>
+        {{if .FileView.Entries}}
+        <table>
+          <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead>
+          <tbody>
+          {{range .FileView.Entries}}
+            <tr>
+              <td>{{if .IsDir}}<strong>{{.Name}}/</strong>{{else}}<span>{{.Name}}</span>{{end}}</td>
+              <td>{{if .IsDir}}Folder{{else}}{{.Size}}{{end}}</td>
+              <td>{{.ModTime}}</td>
+              <td class="actions">
+                <a class="button secondary" href="/files/{{$.SelectedDomain.ID}}?path={{.Path}}">{{if .IsDir}}Buka{{else}}Edit{{end}}</a>
+                <form method="post"  data-confirm="Hapus file/folder ini secara permanen?"action="/files/{{$.SelectedDomain.ID}}/delete">
+                  <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                  <input type="hidden" name="path" value="{{.Path}}">
+                  <button class="danger" type="submit">Hapus</button>
+                </form>
+              </td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+        {{else}}
+          <p class="topline">Folder kosong.</p>
+        {{end}}
+      {{end}}
+    </section>
+    {{else}}
+    <section class="panel">
+      <h2>Pilih Domain</h2>
+      <p class="topline">Pilih domain yang dibuat lewat deployment panel untuk mengelola file aplikasinya.</p>
+    </section>
+    {{end}}
+  </div>
+</main>
+{{template "layout_end" .}}
+{{end}}
